@@ -21,6 +21,8 @@ class IBapi(EWrapper, EClient):
         self.data = []  # Initialize list to store historical data
         self.data_ready = False
         self.filename = filename
+        self.error_occurred = False  # New flag to track errors
+        self.error_message = ""      # Store error message
 
     def historicalData(self, reqId, bar):
         """
@@ -85,6 +87,22 @@ class IBapi(EWrapper, EClient):
 
         print(f"Data appended to Parquet file: {self.filename}")
 
+    def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson = ""):
+        """Handle API errors"""
+        print(f"Error. Id: {reqId} Code: {errorCode} Msg: {errorString}")
+        
+        # Check for HMDS query error or other specific errors
+        if errorCode == 162 and "HMDS query returned no data" in errorString:
+            self.error_occurred = True
+            self.error_message = errorString
+            self.data_ready = True  # Set to True to break the waiting loop
+        
+        # Add other specific error codes if needed
+        elif errorCode in [162, 200, 354, 2106]:  # Common historical data error codes
+            self.error_occurred = True
+            self.error_message = errorString
+            self.data_ready = True
+
 
 def run_loop(app):
     """
@@ -105,8 +123,10 @@ def request_historical_data(app, contract, endDateTime, duration='1 D', bar_size
     - bar_size: Size of each bar (e.g., '1 min').
     - what_to_show: Data type to show (e.g., 'BID').
     """
-    app.data = []  # Reset data
+    app.data = []
     app.data_ready = False
+    app.error_occurred = False  # Reset error flag
+    app.error_message = ""      # Reset error message
 
     # Send historical data request
     app.reqHistoricalData(
@@ -127,11 +147,15 @@ def request_historical_data(app, contract, endDateTime, duration='1 D', bar_size
     while not app.data_ready and time.time() - start_wait_time < 60:
         time.sleep(1)
 
+    if app.error_occurred:
+        print(f"Skipping interval due to error: {app.error_message}")
+        return False
+
     if not app.data_ready:
         print(f"Error: Data not received for {endDateTime}")
-        return False  # Indicate that data was not received
+        return False
 
-    return True  # Indicate that data was received successfully
+    return True
 
 
 def main():
@@ -165,7 +189,7 @@ def main():
 
     # Define the date range for historical data
     start_date = datetime.strptime('2023-09-23', '%Y-%m-%d')
-    end_date = datetime.strptime('2023-09-25', '%Y-%m-%d')
+    end_date = datetime.strptime('2023-10-23', '%Y-%m-%d')
 
     current_date = start_date
     while current_date < end_date:
@@ -173,7 +197,9 @@ def main():
         current_end = current_date + timedelta(hours=1)
         endDateTime = current_end.strftime('%Y%m%d-%H:%M:%S')  # Format: YYYYMMDD-HH:MM:SS
 
-        # Keep requesting until valid data is received or end_date is reached
+        print(f"Requesting data for interval: {current_date} to {current_end}")
+
+        # Request data for the current hour
         success = request_historical_data(
             app,
             contract,
@@ -186,13 +212,12 @@ def main():
         if success:
             # Write data to Parquet file after each hour of data is received
             app.write_data_to_parquet()
-        else:
-            # If data was not received, skip to the next hour
-            current_date += timedelta(hours=1)
-            continue
-
-        # Move to the next time interval
+        
+        # Always advance to next hour, regardless of success or failure
         current_date += timedelta(hours=1)
+        
+        # Add a small delay between requests to avoid overwhelming the API
+        time.sleep(1)
 
     # Disconnect from IB API
     app.disconnect()
