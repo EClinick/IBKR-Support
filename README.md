@@ -132,10 +132,10 @@ This will read the parquet file and print the data collected from the IBKR API.
         dtype: int64
 ```
 
-As you can see the last time stamp is 2023-09-22 20:59:55, which is the last data point that was collected before the error message was thrown.
+As you can see the last time stamp is **2023-09-22 20:59:55**, which is the last data point that was collected before the error message was thrown.
 
 
 # Conclusion
 
 The bug is that the IBKR API will stop providing data after a certain time period, and will throw an error message.
-I'm not sure if this is my fault, but it seems like it's a bug in the API because the earliest available data point is 2023-09-21 22:00:00, and the data is requested from 2023-09-22 20:00:00 to 2023-09-25 22:00:00, which is within the available data range.
+I'm not sure if this is my fault, but it seems like it's a bug in the API because the earliest available data point is **2023-09-21 22:00:00**, and the data is requested from **2023-09-22 20:00:00** to **2023-09-25 22:00:00**, which is w**ithin the available data range.**
